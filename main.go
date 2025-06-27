@@ -115,10 +115,11 @@ func verifyHandler(w http.ResponseWriter, r *http.Request) {
 		</div>`, safeID, safeName)
 	} else {
 		htmlResponse = fmt.Sprintf(`<div style="font-family: Arial, sans-serif; line-height: 1.6; padding: 10px;">
-			<strong>ID:</strong> %s<br>
-			<strong>FULL NAME:</strong> %s<br>
-			%s
-		</div>`, safeID, safeName, safeRemark)
+		<strong>ID:</strong> %s<br>
+		<strong>FULL NAME:</strong> %s<br>
+		<strong>REMARKS:</strong><br>
+		<div style="margin-top: 8px;">%s</div>
+	</div>`, safeID, safeName, safeRemark)
 	}
 
 	w.Header().Set("Content-Type", "text/html")

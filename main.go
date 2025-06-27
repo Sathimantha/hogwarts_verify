@@ -101,7 +101,11 @@ func verifyHandler(w http.ResponseWriter, r *http.Request) {
 			<strong>APPROVED AND VERIFIED:</strong> YES
 		</div>`, id, fullName)
 	} else {
-		html = remark
+		html = fmt.Sprintf(`<div style="font-family: Arial, sans-serif; line-height: 1.6; padding: 10px;">
+			<strong>ID:</strong> %s<br>
+			<strong>FULL NAME:</strong> %s<br>
+			%s
+		</div>`, id, fullName, remark)
 	}
 
 	w.Header().Set("Content-Type", "text/html")

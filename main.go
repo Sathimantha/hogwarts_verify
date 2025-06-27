@@ -76,8 +76,34 @@ func verifyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	html := fmt.Sprintf(`<div><strong>ID:</strong> %s<br><strong>Name:</strong> %s<br><strong>Category:</strong> %s<br><strong>Remark:</strong> %s</div>`,
-		id, fullName, category, remark)
+	var html string
+	if category == "student" {
+		html = fmt.Sprintf(`<div style="font-family: Arial, sans-serif; line-height: 1.6; padding: 10px;">
+			<strong>ID:</strong> %s<br>
+			<strong>FULL NAME:</strong> %s<br>
+			<strong>COURSES COMPLETED:</strong><br>
+			<ul>
+				<li>Introduction to Basic Psychology (One Hour Workshop)</li>
+				<li>Introduction to Career Guidance (One Hour Workshop)</li>
+				<li>Introduction to Basic Counselling (One Hour Workshop)</li>
+				<li>Introduction to Basic IT (One Hour Workshop)</li>
+				<li>Introduction to Basic Business Management (One Hour Workshop)</li>
+				<li>Introduction to Basic Spoken English (One Hour Workshop)</li>
+				<li>Introduction to Memory Boosting (One Hour Workshop)</li>
+				<li>Introduction to Basic Personality Development (One Hour Workshop)</li>
+				<li>Introduction to Entrepreneurship (One Hour Workshop)</li>
+				<li>Introduction to Basic Body Language (One Hour Workshop)</li>
+				<li>Introduction to Basic Counselling Skills (One Hour Workshop)</li>
+				<li>Introduction to Basic Human Resource Management (One Hour Workshop)</li>
+				<li>Introduction to Basic Teaching Methodologies (One Hour Workshop)</li>
+				<li>Introduction to Basic Marketing Management (One Hour Workshop)</li>
+			</ul>
+			<strong>APPROVED AND VERIFIED:</strong> YES
+		</div>`, id, fullName)
+	} else {
+		html = remark
+	}
+
 	w.Header().Set("Content-Type", "text/html")
 	w.Write([]byte(html))
 }

@@ -16,15 +16,35 @@
             padding: 20px;
             line-height: 1.6;
         }
+
         #searchSection {
             margin-bottom: 20px;
         }
+
+        #searchArea {
+            background-color: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        #responseArea {
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            min-height: 100px;
+            line-height: 1.6;
+        }
+
         #idInput {
             width: 300px;
             font-size: 16px;
             padding: 8px;
             margin-right: 10px;
         }
+
         .button {
             padding: 10px 20px;
             background-color: #007bff;
@@ -33,29 +53,36 @@
             border-radius: 4px;
             cursor: pointer;
         }
+
         .button:hover {
             background-color: #0056b3;
         }
+
         .button.secondary {
             background-color: #6c757d;
         }
+
         .button.secondary:hover {
             background-color: #5a6268;
         }
+
         .hidden {
             display: none;
         }
+
         .alert-box {
             margin-top: 10px;
             padding: 10px;
             border-radius: 4px;
             margin-bottom: 15px;
         }
+
         .alert-box.alert {
             background-color: #f8d7da;
             border: 1px solid #f5c6cb;
             color: #721c24;
         }
+
         .alert-box.success {
             background-color: #d4edda;
             border: 1px solid #c3e6cb;
@@ -82,21 +109,21 @@
                     'Accept': 'text/html',
                 },
             })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Failed to fetch data');
-                }
-                return response.text();
-            })
-            .then(data => {
-                responseArea.innerHTML = data;
-                responseArea.classList.remove('hidden');
-                alertContainer.classList.add('hidden');
-            })
-            .catch(error => {
-                showAlert('Error: ' + error.message, 'alert');
-                responseArea.classList.add('hidden');
-            });
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch data');
+                    }
+                    return response.text();
+                })
+                .then(data => {
+                    responseArea.innerHTML = data;
+                    responseArea.classList.remove('hidden');
+                    alertContainer.classList.add('hidden');
+                })
+                .catch(error => {
+                    showAlert('Error: ' + error.message, 'alert');
+                    responseArea.classList.add('hidden');
+                });
         }
 
         function showAlert(message, type) {

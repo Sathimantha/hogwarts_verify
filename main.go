@@ -42,8 +42,8 @@ func main() {
 		log.Fatalf("CERT_FILE or KEY_FILE not defined in .env")
 	}
 
-	log.Println("Server started on :5000 with SSL")
-	err = http.ListenAndServeTLS(":5000", certFile, keyFile, r)
+	log.Println("Server started on :5001 with SSL")
+	err = http.ListenAndServeTLS(":5001", certFile, keyFile, r)
 	if err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}

@@ -1,0 +1,118 @@
+<div id="id-lookup">
+    <div id="searchSection">
+        <input type="text" id="idInput" name="form_fields[id_number]" placeholder="Enter ID Number">
+        <button class="button" onclick="submitId()">Submit</button>
+        <button class="button secondary" onclick="resetForm()">Reset</button>
+    </div>
+
+    <div id="alertContainer" class="hidden"></div>
+    <div id="responseArea" class="hidden"></div>
+
+    <style>
+        #id-lookup {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        #searchSection {
+            margin-bottom: 20px;
+        }
+        #idInput {
+            width: 300px;
+            font-size: 16px;
+            padding: 8px;
+            margin-right: 10px;
+        }
+        .button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .button:hover {
+            background-color: #0056b3;
+        }
+        .button.secondary {
+            background-color: #6c757d;
+        }
+        .button.secondary:hover {
+            background-color: #5a6268;
+        }
+        .hidden {
+            display: none;
+        }
+        .alert-box {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .alert-box.alert {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .alert-box.success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+    </style>
+
+    <script>
+        const API_BASE_URL = 'https://cdn.hogwarts-legacy.info:5001';
+
+        function submitId() {
+            const idNumber = document.getElementById('idInput').value.trim();
+            const responseArea = document.getElementById('responseArea');
+            const alertContainer = document.getElementById('alertContainer');
+
+            if (!idNumber) {
+                showAlert('Please enter an ID number.', 'alert');
+                return;
+            }
+
+            fetch(`${API_BASE_URL}/verify?id=${encodeURIComponent(idNumber)}`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'text/html',
+                },
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to fetch data');
+                }
+                return response.text();
+            })
+            .then(data => {
+                responseArea.innerHTML = data;
+                responseArea.classList.remove('hidden');
+                alertContainer.classList.add('hidden');
+            })
+            .catch(error => {
+                showAlert('Error: ' + error.message, 'alert');
+                responseArea.classList.add('hidden');
+            });
+        }
+
+        function showAlert(message, type) {
+            const alertContainer = document.getElementById('alertContainer');
+            alertContainer.innerHTML = `
+                <div class="alert-box ${type}">
+                    ${message}
+                </div>
+            `;
+            alertContainer.classList.remove('hidden');
+        }
+
+        function resetForm() {
+            document.getElementById('idInput').value = '';
+            document.getElementById('responseArea').classList.add('hidden');
+            document.getElementById('alertContainer').classList.add('hidden');
+        }
+    </script>
+</div>

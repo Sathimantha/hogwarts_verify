@@ -102,7 +102,6 @@
                 showAlert('Please enter an ID number.', 'alert');
                 return;
             }
-
             fetch(`${API_BASE_URL}/verify?id=${encodeURIComponent(idNumber)}`, {
                 method: 'GET',
                 headers: {
@@ -111,7 +110,11 @@
             })
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error('Failed to fetch data');
+                        if (response.status === 404) {
+                            return Promise.reject(new Error("Person not found"));
+                        } else {
+                            return Promise.reject(new Error("Server error, please try again later"));
+                        }
                     }
                     return response.text();
                 })
@@ -121,9 +124,10 @@
                     alertContainer.classList.add('hidden');
                 })
                 .catch(error => {
-                    showAlert('Error: ' + error.message, 'alert');
+                    showAlert(error.message, 'alert');
                     responseArea.classList.add('hidden');
                 });
+
         }
 
         function showAlert(message, type) {

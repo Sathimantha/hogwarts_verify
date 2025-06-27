@@ -3,9 +3,11 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/handlers"
@@ -64,6 +66,12 @@ func verifyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate ID format (alphanumeric + optional hyphen, max 50 chars)
+	if len(id) > 50 || !regexp.MustCompile(`^[a-zA-Z0-9\-]+$`).MatchString(id) {
+		http.Error(w, "Invalid ID format", http.StatusBadRequest)
+		return
+	}
+
 	var fullName, category, remark string
 	query := `SELECT full_name, category, remark FROM people WHERE national_id = ? LIMIT 1`
 	err := db.QueryRow(query, id).Scan(&fullName, &category, &remark)
@@ -76,9 +84,14 @@ func verifyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var html string
+	// Escape values to prevent XSS
+	safeID := html.EscapeString(id)
+	safeName := html.EscapeString(fullName)
+	safeRemark := html.EscapeString(remark)
+
+	var htmlResponse string
 	if category == "student" {
-		html = fmt.Sprintf(`<div style="font-family: Arial, sans-serif; line-height: 1.6; padding: 10px;">
+		htmlResponse = fmt.Sprintf(`<div style="font-family: Arial, sans-serif; line-height: 1.6; padding: 10px;">
 			<strong>ID:</strong> %s<br>
 			<strong>FULL NAME:</strong> %s<br>
 			<strong>COURSES COMPLETED:</strong><br>
@@ -99,15 +112,15 @@ func verifyHandler(w http.ResponseWriter, r *http.Request) {
 				<li>Introduction to Basic Marketing Management (One Hour Workshop)</li>
 			</ul>
 			<strong>APPROVED AND VERIFIED:</strong> YES
-		</div>`, id, fullName)
+		</div>`, safeID, safeName)
 	} else {
-		html = fmt.Sprintf(`<div style="font-family: Arial, sans-serif; line-height: 1.6; padding: 10px;">
+		htmlResponse = fmt.Sprintf(`<div style="font-family: Arial, sans-serif; line-height: 1.6; padding: 10px;">
 			<strong>ID:</strong> %s<br>
 			<strong>FULL NAME:</strong> %s<br>
 			%s
-		</div>`, id, fullName, remark)
+		</div>`, safeID, safeName, safeRemark)
 	}
 
 	w.Header().Set("Content-Type", "text/html")
-	w.Write([]byte(html))
+	w.Write([]byte(htmlResponse))
 }

@@ -87,7 +87,6 @@ func verifyHandler(w http.ResponseWriter, r *http.Request) {
 	// Escape values to prevent XSS
 	safeID := html.EscapeString(id)
 	safeName := html.EscapeString(fullName)
-	safeRemark := html.EscapeString(remark)
 
 	var htmlResponse string
 	if category == "student" {

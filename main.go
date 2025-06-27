@@ -8,6 +8,7 @@ import (
 	"os"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 )
@@ -36,6 +37,13 @@ func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/verify", verifyHandler).Methods("GET")
 
+	// Add CORS middleware
+	corsHandler := handlers.CORS(
+		handlers.AllowedOrigins([]string{"https://hogwarts-legacy.info"}),
+		handlers.AllowedMethods([]string{"GET"}),
+		handlers.AllowedHeaders([]string{"Content-Type", "Accept"}),
+	)(r)
+
 	certFile := os.Getenv("CERT_FILE")
 	keyFile := os.Getenv("KEY_FILE")
 	if certFile == "" || keyFile == "" {
@@ -43,7 +51,7 @@ func main() {
 	}
 
 	log.Println("Server started on :5001 with SSL")
-	err = http.ListenAndServeTLS(":5001", certFile, keyFile, r)
+	err = http.ListenAndServeTLS(":5001", certFile, keyFile, corsHandler)
 	if err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}

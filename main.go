@@ -72,7 +72,7 @@ func main() {
 
 func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	// Print raw query string to terminal
-	fmt.Println("Raw query:", r.URL.RawQuery)
+	fmt.Println("Raw query:", r.URL)
 
 	// Extract input from query parameters (case-insensitive)
 	query := r.URL.Query()

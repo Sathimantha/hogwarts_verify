@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -81,7 +82,7 @@ func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	// Print raw form data to terminal
 	fmt.Println("Raw form data:", r.PostForm.Encode())
 
-	// Extract input from form data (case-insensitive)
+	// Extract input from direct form fields (case-insensitive)
 	input := r.PostFormValue("Digits")
 	if input == "" {
 		input = r.PostFormValue("digits")
@@ -92,8 +93,37 @@ func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	if input == "" {
 		input = r.PostFormValue("speechresult")
 	}
-	// Print received parameters to terminal
-	fmt.Printf("Received Digits: %s, SpeechResult: %s\n", r.PostFormValue("Digits"), r.PostFormValue("SpeechResult"))
+
+	// Fallback: Check if 'body' parameter contains Digits and SpeechResult
+	if input == "" {
+		body := r.PostFormValue("body")
+		fmt.Println("Body parameter received:", body)
+		if body != "" {
+			// Remove leading '?' if present
+			body = strings.TrimPrefix(body, "?")
+			// Decode URL-encoded body
+			parsed, err := url.ParseQuery(body)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to parse body parameter: %v\n", err)
+				http.Error(w, "Invalid body parameter", http.StatusBadRequest)
+				return
+			}
+			input = parsed.Get("Digits")
+			if input == "" {
+				input = parsed.Get("digits")
+			}
+			if input == "" {
+				input = parsed.Get("SpeechResult")
+			}
+			if input == "" {
+				input = parsed.Get("speechresult")
+			}
+			fmt.Printf("Parsed from body - Digits: %s, SpeechResult: %s\n", parsed.Get("Digits"), parsed.Get("SpeechResult"))
+		}
+	}
+
+	// Print final received parameters to terminal
+	fmt.Printf("Final received - Digits: %s, SpeechResult: %s, Input: %s\n", r.PostFormValue("Digits"), r.PostFormValue("SpeechResult"), input)
 
 	if input == "" {
 		fmt.Println("No input provided, returning 400")

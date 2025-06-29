@@ -39,18 +39,21 @@ func main() {
 	defer db.Close()
 
 	r := mux.NewRouter()
+
+	// Define routes
 	r.HandleFunc("/verify", verifyHandler).Methods("GET")
 	r.HandleFunc("/twilio/verify", twilioVerifyHandler).Methods("POST")
 
-	// CORS middleware for /verify (frontend) but not needed for /twilio/verify
+	// Apply CORS only to /verify for frontend
 	corsHandler := handlers.CORS(
 		handlers.AllowedOrigins([]string{"https://hogwarts-legacy.info"}),
 		handlers.AllowedMethods([]string{"GET", "POST"}),
 		handlers.AllowedHeaders([]string{"Content-Type", "Accept"}),
-	)(r.PathPrefix("/verify").Subrouter())
+	)
 
-	// Apply no CORS restrictions for /twilio/verify
-	r.PathPrefix("/twilio/verify").Handler(r)
+	// Wrap the entire router with CORS handler
+	// Twilio's /twilio/verify doesn't need CORS, but it won't be affected
+	http.Handle("/", corsHandler(r))
 
 	certFile := os.Getenv("CERT_FILE")
 	keyFile := os.Getenv("KEY_FILE")
@@ -59,7 +62,7 @@ func main() {
 	}
 
 	log.Println("Server started on :5001 with SSL")
-	err = http.ListenAndServeTLS(":5001", certFile, keyFile, r)
+	err = http.ListenAndServeTLS(":5001", certFile, keyFile, nil)
 	if err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
@@ -85,6 +88,7 @@ func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		twiml := `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
 	<Say>Invalid input format. Please use only numbers or letters.</Say>
+	<Say>Thank You For Contacting Hogwarts.</Say>
 	<Hangup/>
 </Response>`
 		w.Write([]byte(twiml))

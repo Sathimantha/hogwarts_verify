@@ -19,6 +19,22 @@ import (
 var db *sql.DB
 var digitRegex = regexp.MustCompile(`^\d+$`)
 
+// charToWord maps characters to their spoken form for digit-by-digit reading
+var charToWord = map[rune]string{
+	'0': "zero",
+	'1': "one",
+	'2': "two",
+	'3': "three",
+	'4': "four",
+	'5': "five",
+	'6': "six",
+	'7': "seven",
+	'8': "eight",
+	'9': "nine",
+	'v': "V.",
+	'V': "V.",
+}
+
 func main() {
 	err := godotenv.Load()
 	if err != nil {
@@ -148,6 +164,17 @@ func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Convert input to digit-by-digit spoken form
+	var spokenInput []string
+	for _, char := range input {
+		if word, exists := charToWord[char]; exists {
+			spokenInput = append(spokenInput, word)
+		} else {
+			spokenInput = append(spokenInput, string(char))
+		}
+	}
+	spokenInputStr := strings.Join(spokenInput, " ")
+
 	var fullName, category string
 	// Use LIKE to match input with or without trailing 'v'
 	queryStr := `SELECT full_name, category FROM people WHERE national_id LIKE ? LIMIT 1`
@@ -163,23 +190,23 @@ func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		if category == "staff" {
 			categoryText = "staff member"
 		}
-		// Generate TwiML for successful verification
+		// Generate TwiML with digit-by-digit input
 		twiml := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
 	<Say>You entered %s. The name is %s, and it is verified to be a %s.</Say>
 	<Say>Thank You For Contacting Hogwarts.</Say>
 	<Hangup/>
-</Response>`, input, fullName, categoryText)
+</Response>`, spokenInputStr, fullName, categoryText)
 		fmt.Println("Successful verification, returning TwiML")
 		w.Write([]byte(twiml))
 	} else {
-		// Generate TwiML for no match, including entered input
+		// Generate TwiML for no match, including digit-by-digit input
 		twiml := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
 	<Say>Sorry, no match found for %s.</Say>
 	<Say>Thank You For Contacting Hogwarts.</Say>
 	<Hangup/>
-</Response>`, input)
+</Response>`, spokenInputStr)
 		fmt.Println("No match found, returning TwiML")
 		w.Write([]byte(twiml))
 	}

@@ -110,7 +110,7 @@ func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		// Generate TwiML for successful verification
 		twiml := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-	<Say>You entered %s. The name is %s, and it is verified to be a %s.</Say>
+	<Say>You entered %s. The name is %s, and it is verified to be a %s member.</Say>
 	<Say>Thank You For Contacting Hogwarts.</Say>
 	<Hangup/>
 </Response>`, input, fullName, categoryText)

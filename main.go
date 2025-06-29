@@ -46,7 +46,7 @@ func main() {
 
 	// Apply CORS only to /verify for frontend
 	corsHandler := handlers.CORS(
-		handlers.AllowedOrigins([]string{"https://hogwarts-legacy.info"}),
+		handlers.AllowedOrigins([]string{"*"}),
 		handlers.AllowedMethods([]string{"GET", "POST"}),
 		handlers.AllowedHeaders([]string{"Content-Type", "Accept"}),
 	)

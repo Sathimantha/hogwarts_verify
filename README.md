@@ -45,3 +45,8 @@ sudo systemctl enable hogwarts.service
 sudo systemctl start hogwarts.service
 sudo systemctl status hogwarts.service
 ```
+
+Example endpoint testing
+```
+curl -v -X POST "https://example.url/twilio/verify" -H "Content-Type: application/x-www-form-urlencoded" -d "body=?Digits=1234578&SpeechResult="
+```

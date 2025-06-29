@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"html"
-	"log"
 	"net/http"
 	"os"
 	"regexp"
@@ -22,7 +21,8 @@ var digitRegex = regexp.MustCompile(`^\d+$`)
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
+		fmt.Fprintf(os.Stderr, "Error loading .env file: %v\n", err)
+		os.Exit(1)
 	}
 
 	dbUser := os.Getenv("DB_USERNAME")
@@ -34,7 +34,8 @@ func main() {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", dbUser, dbPass, dbHost, dbPort, dbName)
 	db, err = sql.Open("mysql", dsn)
 	if err != nil {
-		log.Fatalf("Failed to connect to DB: %v", err)
+		fmt.Fprintf(os.Stderr, "Failed to connect to DB: %v\n", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
@@ -46,35 +47,50 @@ func main() {
 
 	// Apply CORS only to /verify for frontend
 	corsHandler := handlers.CORS(
-		handlers.AllowedOrigins([]string{"*"}),
+		handlers.AllowedOrigins([]string{"https://hogwarts-legacy.info"}),
 		handlers.AllowedMethods([]string{"GET", "POST"}),
 		handlers.AllowedHeaders([]string{"Content-Type", "Accept"}),
 	)
 
 	// Wrap the entire router with CORS handler
-	// Twilio's /twilio/verify doesn't need CORS, but it won't be affected
 	http.Handle("/", corsHandler(r))
 
 	certFile := os.Getenv("CERT_FILE")
 	keyFile := os.Getenv("KEY_FILE")
 	if certFile == "" || keyFile == "" {
-		log.Fatalf("CERT_FILE or KEY_FILE not defined in .env")
+		fmt.Fprintf(os.Stderr, "CERT_FILE or KEY_FILE not defined in .env\n")
+		os.Exit(1)
 	}
 
-	log.Println("Server started on :5001 with SSL")
+	fmt.Println("Server started on :5001 with SSL")
 	err = http.ListenAndServeTLS(":5001", certFile, keyFile, nil)
 	if err != nil {
-		log.Fatalf("Server failed: %v", err)
+		fmt.Fprintf(os.Stderr, "Server failed: %v\n", err)
+		os.Exit(1)
 	}
 }
 
 func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
-	// Extract input from Twilio (Digits for DTMF, SpeechResult for speech)
-	input := r.PostFormValue("Digits")
+	// Print raw query string to terminal
+	fmt.Println("Raw query:", r.URL.RawQuery)
+
+	// Extract input from query parameters (case-insensitive)
+	query := r.URL.Query()
+	input := query.Get("Digits")
 	if input == "" {
-		input = r.PostFormValue("SpeechResult")
+		input = query.Get("digits")
 	}
 	if input == "" {
+		input = query.Get("SpeechResult")
+	}
+	if input == "" {
+		input = query.Get("speechresult")
+	}
+	// Print received parameters to terminal
+	fmt.Printf("Received Digits: %s, SpeechResult: %s\n", query.Get("Digits"), query.Get("SpeechResult"))
+
+	if input == "" {
+		fmt.Println("No input provided, returning 400")
 		http.Error(w, "No input provided", http.StatusBadRequest)
 		return
 	}
@@ -91,14 +107,18 @@ func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	<Say>Thank You For Contacting Hogwarts.</Say>
 	<Hangup/>
 </Response>`
+		fmt.Println("Invalid input format, returning TwiML")
 		w.Write([]byte(twiml))
 		return
 	}
 
 	var fullName, category string
 	// Use LIKE to match input with or without trailing 'v'
-	query := `SELECT full_name, category FROM people WHERE national_id LIKE ? LIMIT 1`
-	err := db.QueryRow(query, input+"%").Scan(&fullName, &category)
+	queryStr := `SELECT full_name, category FROM people WHERE national_id LIKE ? LIMIT 1`
+	err := db.QueryRow(queryStr, input+"%").Scan(&fullName, &category)
+	if err != nil {
+		fmt.Printf("Database error for input %s: %v\n", input, err)
+	}
 
 	w.Header().Set("Content-Type", "application/xml")
 	if err == nil {
@@ -110,10 +130,11 @@ func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		// Generate TwiML for successful verification
 		twiml := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-	<Say>You entered %s. The name is %s, and it is verified to be a %s member.</Say>
+	<Say>You entered %s. The name is %s, and it is verified to be a %s.</Say>
 	<Say>Thank You For Contacting Hogwarts.</Say>
 	<Hangup/>
 </Response>`, input, fullName, categoryText)
+		fmt.Println("Successful verification, returning TwiML")
 		w.Write([]byte(twiml))
 	} else {
 		// Generate TwiML for no match, including entered input
@@ -123,6 +144,7 @@ func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	<Say>Thank You For Contacting Hogwarts.</Say>
 	<Hangup/>
 </Response>`, input)
+		fmt.Println("No match found, returning TwiML")
 		w.Write([]byte(twiml))
 	}
 }
@@ -134,12 +156,14 @@ func isDigits(s string) bool {
 func verifyHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	if id == "" {
+		fmt.Println("No ID provided for /verify, returning 400")
 		http.Error(w, "ID is required", http.StatusBadRequest)
 		return
 	}
 
 	// Validate ID format (alphanumeric, max 50 chars)
 	if len(id) > 50 || !regexp.MustCompile(`^[a-zA-Z0-9]+$`).MatchString(id) {
+		fmt.Println("Invalid ID format for /verify, returning 400")
 		http.Error(w, "Invalid ID format", http.StatusBadRequest)
 		return
 	}
@@ -148,11 +172,12 @@ func verifyHandler(w http.ResponseWriter, r *http.Request) {
 	query := `SELECT full_name, category, remark FROM people WHERE national_id = ? LIMIT 1`
 	err := db.QueryRow(query, id).Scan(&fullName, &category, &remark)
 	if err == sql.ErrNoRows {
+		fmt.Println("Person not found for /verify, returning 404")
 		http.Error(w, "Person not found", http.StatusNotFound)
 		return
 	} else if err != nil {
+		fmt.Printf("Database error for /verify ID %s: %v\n", id, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		log.Printf("Database error: %v", err)
 		return
 	}
 
@@ -193,6 +218,7 @@ func verifyHandler(w http.ResponseWriter, r *http.Request) {
 		</div>`, safeID, safeName, remark)
 	}
 
+	fmt.Println("Returning HTML response for /verify")
 	w.Header().Set("Content-Type", "text/html")
 	w.Write([]byte(htmlResponse))
 }

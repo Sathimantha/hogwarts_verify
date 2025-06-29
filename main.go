@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/handlers"
@@ -16,6 +17,7 @@ import (
 )
 
 var db *sql.DB
+var digitRegex = regexp.MustCompile(`^\d+$`)
 
 func main() {
 	err := godotenv.Load()
@@ -38,13 +40,17 @@ func main() {
 
 	r := mux.NewRouter()
 	r.HandleFunc("/verify", verifyHandler).Methods("GET")
+	r.HandleFunc("/twilio/verify", twilioVerifyHandler).Methods("POST")
 
-	// Add CORS middleware
+	// CORS middleware for /verify (frontend) but not needed for /twilio/verify
 	corsHandler := handlers.CORS(
 		handlers.AllowedOrigins([]string{"https://hogwarts-legacy.info"}),
-		handlers.AllowedMethods([]string{"GET"}),
+		handlers.AllowedMethods([]string{"GET", "POST"}),
 		handlers.AllowedHeaders([]string{"Content-Type", "Accept"}),
-	)(r)
+	)(r.PathPrefix("/verify").Subrouter())
+
+	// Apply no CORS restrictions for /twilio/verify
+	r.PathPrefix("/twilio/verify").Handler(r)
 
 	certFile := os.Getenv("CERT_FILE")
 	keyFile := os.Getenv("KEY_FILE")
@@ -53,10 +59,77 @@ func main() {
 	}
 
 	log.Println("Server started on :5001 with SSL")
-	err = http.ListenAndServeTLS(":5001", certFile, keyFile, corsHandler)
+	err = http.ListenAndServeTLS(":5001", certFile, keyFile, r)
 	if err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
+}
+
+func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract input from Twilio (Digits for DTMF, SpeechResult for speech)
+	input := r.PostFormValue("Digits")
+	if input == "" {
+		input = r.PostFormValue("SpeechResult")
+	}
+	if input == "" {
+		http.Error(w, "No input provided", http.StatusBadRequest)
+		return
+	}
+
+	// Remove spaces and normalize input
+	input = strings.ReplaceAll(input, " ", "")
+
+	// Validate input (alphanumeric, max 50 chars)
+	if len(input) > 50 || !regexp.MustCompile(`^[a-zA-Z0-9]+$`).MatchString(input) {
+		w.Header().Set("Content-Type", "application/xml")
+		twiml := `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+	<Say>Invalid input format. Please use only numbers or letters.</Say>
+	<Hangup/>
+</Response>`
+		w.Write([]byte(twiml))
+		return
+	}
+
+	var fullName, category string
+	query := `SELECT full_name, category FROM people WHERE national_id = ? LIMIT 1`
+	err := db.QueryRow(query, input).Scan(&fullName, &category)
+
+	// If not found and input is 9 digits, try appending 'v'
+	if err == sql.ErrNoRows && len(input) == 9 && isDigits(input) {
+		query = `SELECT full_name, category FROM people WHERE national_id = ? LIMIT 1`
+		err = db.QueryRow(query, input+"v").Scan(&fullName, &category)
+	}
+
+	w.Header().Set("Content-Type", "application/xml")
+	if err == nil {
+		// Adjust category text for natural speech
+		categoryText := "student"
+		if category == "staff" {
+			categoryText = "staff member"
+		}
+		// Generate TwiML for successful verification
+		twiml := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+	<Say>You entered %s. The name is %s, and it is verified to be a %s.</Say>
+	<Say>Thank You For Contacting Hogwarts.</Say>
+	<Hangup/>
+</Response>`, input, fullName, categoryText)
+		w.Write([]byte(twiml))
+	} else {
+		// Generate TwiML for no match
+		twiml := `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+	<Say>Sorry, no match found for the entered number.</Say>
+	<Say>Thank You For Contacting Hogwarts.</Say>
+	<Hangup/>
+</Response>`
+		w.Write([]byte(twiml))
+	}
+}
+
+func isDigits(s string) bool {
+	return digitRegex.MatchString(s)
 }
 
 func verifyHandler(w http.ResponseWriter, r *http.Request) {
@@ -66,8 +139,8 @@ func verifyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate ID format (alphanumeric + optional hyphen, max 50 chars)
-	if len(id) > 50 || !regexp.MustCompile(`^[a-zA-Z0-9\-]+$`).MatchString(id) {
+	// Validate ID format (alphanumeric, max 50 chars)
+	if len(id) > 50 || !regexp.MustCompile(`^[a-zA-Z0-9]+$`).MatchString(id) {
 		http.Error(w, "Invalid ID format", http.StatusBadRequest)
 		return
 	}
@@ -114,12 +187,11 @@ func verifyHandler(w http.ResponseWriter, r *http.Request) {
 		</div>`, safeID, safeName)
 	} else {
 		htmlResponse = fmt.Sprintf(`<div style="font-family: Arial, sans-serif; line-height: 1.6; padding: 10px;">
-    <strong>ID:</strong> %s<br>
-    <strong>FULL NAME:</strong> %s<br>
-    <strong>REMARKS:</strong><br>
-    %s
-</div>`, safeID, safeName, remark) // don't escape here
-
+			<strong>ID:</strong> %s<br>
+			<strong>FULL NAME:</strong> %s<br>
+			<strong>REMARKS:</strong><br>
+			%s
+		</div>`, safeID, safeName, remark)
 	}
 
 	w.Header().Set("Content-Type", "text/html")

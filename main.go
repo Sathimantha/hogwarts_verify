@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/handlers"
@@ -48,10 +49,32 @@ func stripHTML(input string) string {
 	return clean
 }
 
+// logError inserts an entry into the errors table
+func logError(errorType, remark string) {
+	// Use London timezone (UTC+1 for BST in June)
+	london, err := time.LoadLocation("Europe/London")
+	if err != nil {
+		// Fallback to UTC if timezone loading fails
+		timestamp := time.Now().UTC()
+		_, dbErr := db.Exec("INSERT INTO errors (timestamp, error_type, remark) VALUES (?, ?, ?)", timestamp, errorType, fmt.Sprintf("Timezone error: %v; %s", err, remark))
+		if dbErr != nil {
+			// Silent fail to avoid disrupting response
+		}
+		return
+	}
+	timestamp := time.Now().In(london)
+
+	query := `INSERT INTO errors (timestamp, error_type, remark) VALUES (?, ?, ?)`
+	_, err = db.Exec(query, timestamp, errorType, remark)
+	if err != nil {
+		// Silent fail to avoid disrupting response
+	}
+}
+
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading .env file: %v\n", err)
+		logError("STARTUP_ERROR", fmt.Sprintf("Error loading .env file: %v", err))
 		os.Exit(1)
 	}
 
@@ -64,7 +87,7 @@ func main() {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", dbUser, dbPass, dbHost, dbPort, dbName)
 	db, err = sql.Open("mysql", dsn)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to connect to DB: %v\n", err)
+		logError("DB_CONNECTION_ERROR", fmt.Sprintf("Failed to connect to DB: %v", err))
 		os.Exit(1)
 	}
 	defer db.Close()
@@ -88,14 +111,13 @@ func main() {
 	certFile := os.Getenv("CERT_FILE")
 	keyFile := os.Getenv("KEY_FILE")
 	if certFile == "" || keyFile == "" {
-		fmt.Fprintf(os.Stderr, "CERT_FILE or KEY_FILE not defined in .env\n")
+		logError("CONFIG_ERROR", "CERT_FILE or KEY_FILE not defined in .env")
 		os.Exit(1)
 	}
 
-	fmt.Println("Server started on :5001 with SSL")
 	err = http.ListenAndServeTLS(":5001", certFile, keyFile, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Server failed: %v\n", err)
+		logError("SERVER_ERROR", fmt.Sprintf("Server failed: %v", err))
 		os.Exit(1)
 	}
 }
@@ -103,13 +125,10 @@ func main() {
 func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	// Parse form data
 	if err := r.ParseForm(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to parse form data: %v\n", err)
+		logError("TWILIO_INVALID_FORM", fmt.Sprintf("Failed to parse form data: %v", err))
 		http.Error(w, "Invalid form data", http.StatusBadRequest)
 		return
 	}
-
-	// Print raw form data to terminal
-	fmt.Println("Raw form data:", r.PostForm.Encode())
 
 	// Extract input from direct form fields (case-insensitive)
 	input := r.PostFormValue("Digits")
@@ -126,14 +145,13 @@ func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	// Fallback: Check if 'body' parameter contains Digits and SpeechResult
 	if input == "" {
 		body := r.PostFormValue("body")
-		fmt.Println("Body parameter received:", body)
 		if body != "" {
 			// Remove leading '?' if present
 			body = strings.TrimPrefix(body, "?")
 			// Decode URL-encoded body
 			parsed, err := url.ParseQuery(body)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to parse body parameter: %v\n", err)
+				logError("TWILIO_INVALID_BODY", fmt.Sprintf("Failed to parse body parameter: %v", err))
 				http.Error(w, "Invalid body parameter", http.StatusBadRequest)
 				return
 			}
@@ -147,15 +165,11 @@ func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 			if input == "" {
 				input = parsed.Get("speechresult")
 			}
-			fmt.Printf("Parsed from body - Digits: %s, SpeechResult: %s\n", parsed.Get("Digits"), parsed.Get("SpeechResult"))
 		}
 	}
 
-	// Print final received parameters to terminal
-	fmt.Printf("Final received - Digits: %s, SpeechResult: %s, Input: %s\n", r.PostFormValue("Digits"), r.PostFormValue("SpeechResult"), input)
-
 	if input == "" {
-		fmt.Println("No input provided, returning 400")
+		logError("TWILIO_NO_INPUT", "No input provided in Digits or SpeechResult")
 		http.Error(w, "No input provided", http.StatusBadRequest)
 		return
 	}
@@ -169,10 +183,8 @@ func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		twiml := `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
 	<Say>Invalid input format. Please use only numbers or letters.</Say>
-	<Say>Thank You For Contacting Hogwarts.</Say>
-	<Hangup/>
 </Response>`
-		fmt.Println("Invalid input format, returning TwiML")
+		logError("TWILIO_INVALID_INPUT", fmt.Sprintf("Invalid input format: %s", input))
 		w.Write([]byte(twiml))
 		return
 	}
@@ -193,7 +205,7 @@ func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	queryStr := `SELECT full_name, category, remark FROM people WHERE national_id LIKE ? LIMIT 1`
 	err := db.QueryRow(queryStr, input+"%").Scan(&fullName, &category, &remark)
 	if err != nil {
-		fmt.Printf("Database error for input %s: %v\n", input, err)
+		logError("TWILIO_DB_ERROR", fmt.Sprintf("Database error for input %s: %v", input, err))
 	}
 
 	w.Header().Set("Content-Type", "application/xml")
@@ -209,20 +221,16 @@ func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		twiml := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
 	<Say>You entered %s. The name is %s. The category is %s. Remark: %s.</Say>
-	<Say>Thank You For Contacting Hogwarts.</Say>
-	<Hangup/>
 </Response>`, spokenInputStr, fullName, categoryText, cleanRemark)
-		fmt.Println("Successful verification, returning TwiML")
+		logError("TWILIO_SUCCESS", fmt.Sprintf("Verified input: %s, Name: %s, Category: %s, Remark: %s", input, fullName, categoryText, cleanRemark))
 		w.Write([]byte(twiml))
 	} else {
 		// Generate TwiML for no match, including digit-by-digit input
 		twiml := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
 	<Say>Sorry, no match found for %s.</Say>
-	<Say>Thank You For Contacting Hogwarts.</Say>
-	<Hangup/>
 </Response>`, spokenInputStr)
-		fmt.Println("No match found, returning TwiML")
+		logError("TWILIO_NO_MATCH", fmt.Sprintf("No match found for input: %s", input))
 		w.Write([]byte(twiml))
 	}
 }
@@ -234,14 +242,14 @@ func isDigits(s string) bool {
 func verifyHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	if id == "" {
-		fmt.Println("No ID provided for /verify, returning 400")
+		logError("VERIFY_NO_ID", "No ID provided in query parameter")
 		http.Error(w, "ID is required", http.StatusBadRequest)
 		return
 	}
 
 	// Validate ID format (alphanumeric, max 50 chars)
 	if len(id) > 50 || !regexp.MustCompile(`^[a-zA-Z0-9]+$`).MatchString(id) {
-		fmt.Println("Invalid ID format for /verify, returning 400")
+		logError("VERIFY_INVALID_ID", fmt.Sprintf("Invalid ID format: %s", id))
 		http.Error(w, "Invalid ID format", http.StatusBadRequest)
 		return
 	}
@@ -250,11 +258,11 @@ func verifyHandler(w http.ResponseWriter, r *http.Request) {
 	query := `SELECT full_name, category, remark FROM people WHERE national_id = ? LIMIT 1`
 	err := db.QueryRow(query, id).Scan(&fullName, &category, &remark)
 	if err == sql.ErrNoRows {
-		fmt.Println("Person not found for /verify, returning 404")
+		logError("VERIFY_NOT_FOUND", fmt.Sprintf("Person not found for ID: %s", id))
 		http.Error(w, "Person not found", http.StatusNotFound)
 		return
 	} else if err != nil {
-		fmt.Printf("Database error for /verify ID %s: %v\n", id, err)
+		logError("VERIFY_DB_ERROR", fmt.Sprintf("Database error for ID %s: %v", id, err))
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -296,7 +304,7 @@ func verifyHandler(w http.ResponseWriter, r *http.Request) {
 		</div>`, safeID, safeName, remark)
 	}
 
-	fmt.Println("Returning HTML response for /verify")
+	logError("VERIFY_SUCCESS", fmt.Sprintf("Verified ID: %s, Name: %s, Category: %s, Remark: %s", id, fullName, category, remark))
 	w.Header().Set("Content-Type", "text/html")
 	w.Write([]byte(htmlResponse))
 }

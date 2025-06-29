@@ -71,23 +71,29 @@ func main() {
 }
 
 func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
-	// Print raw query string to terminal
-	fmt.Println("Raw query:", r.URL)
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to parse form data: %v\n", err)
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
 
-	// Extract input from query parameters (case-insensitive)
-	query := r.URL.Query()
-	input := query.Get("Digits")
+	// Print raw form data to terminal
+	fmt.Println("Raw form data:", r.PostForm.Encode())
+
+	// Extract input from form data (case-insensitive)
+	input := r.PostFormValue("Digits")
 	if input == "" {
-		input = query.Get("digits")
+		input = r.PostFormValue("digits")
 	}
 	if input == "" {
-		input = query.Get("SpeechResult")
+		input = r.PostFormValue("SpeechResult")
 	}
 	if input == "" {
-		input = query.Get("speechresult")
+		input = r.PostFormValue("speechresult")
 	}
 	// Print received parameters to terminal
-	fmt.Printf("Received Digits: %s, SpeechResult: %s\n", query.Get("Digits"), query.Get("SpeechResult"))
+	fmt.Printf("Received Digits: %s, SpeechResult: %s\n", r.PostFormValue("Digits"), r.PostFormValue("SpeechResult"))
 
 	if input == "" {
 		fmt.Println("No input provided, returning 400")

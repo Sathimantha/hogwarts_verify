@@ -96,14 +96,9 @@ func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var fullName, category string
-	query := `SELECT full_name, category FROM people WHERE national_id = ? LIMIT 1`
-	err := db.QueryRow(query, input).Scan(&fullName, &category)
-
-	// If not found and input is 9 digits, try appending 'v'
-	if err == sql.ErrNoRows && len(input) == 9 && isDigits(input) {
-		query = `SELECT full_name, category FROM people WHERE national_id = ? LIMIT 1`
-		err = db.QueryRow(query, input+"v").Scan(&fullName, &category)
-	}
+	// Use LIKE to match input with or without trailing 'v'
+	query := `SELECT full_name, category FROM people WHERE national_id LIKE ? LIMIT 1`
+	err := db.QueryRow(query, input+"%").Scan(&fullName, &category)
 
 	w.Header().Set("Content-Type", "application/xml")
 	if err == nil {
@@ -121,13 +116,13 @@ func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 </Response>`, input, fullName, categoryText)
 		w.Write([]byte(twiml))
 	} else {
-		// Generate TwiML for no match
-		twiml := `<?xml version="1.0" encoding="UTF-8"?>
+		// Generate TwiML for no match, including entered input
+		twiml := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-	<Say>Sorry, no match found for the entered number.</Say>
+	<Say>Sorry, no match found for %s.</Say>
 	<Say>Thank You For Contacting Hogwarts.</Say>
 	<Hangup/>
-</Response>`
+</Response>`, input)
 		w.Write([]byte(twiml))
 	}
 }

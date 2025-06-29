@@ -31,8 +31,21 @@ var charToWord = map[rune]string{
 	'7': "seven",
 	'8': "eight",
 	'9': "nine",
-	'v': "V.",
-	'V': "V.",
+	'v': "vee",
+	'V': "vee",
+}
+
+// stripHTML removes HTML tags and converts <br> to periods for natural speech
+func stripHTML(input string) string {
+	// Replace <br> with periods
+	input = strings.ReplaceAll(input, "<br>", ". ")
+	// Simple regex to remove HTML tags
+	re := regexp.MustCompile(`<[^>]+>`)
+	clean := re.ReplaceAllString(input, "")
+	// Remove extra spaces and normalize
+	clean = strings.TrimSpace(clean)
+	clean = regexp.MustCompile(`\s+`).ReplaceAllString(clean, " ")
+	return clean
 }
 
 func main() {
@@ -175,10 +188,10 @@ func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	spokenInputStr := strings.Join(spokenInput, " ")
 
-	var fullName, category string
+	var fullName, category, remark string
 	// Use LIKE to match input with or without trailing 'v'
-	queryStr := `SELECT full_name, category FROM people WHERE national_id LIKE ? LIMIT 1`
-	err := db.QueryRow(queryStr, input+"%").Scan(&fullName, &category)
+	queryStr := `SELECT full_name, category, remark FROM people WHERE national_id LIKE ? LIMIT 1`
+	err := db.QueryRow(queryStr, input+"%").Scan(&fullName, &category, &remark)
 	if err != nil {
 		fmt.Printf("Database error for input %s: %v\n", input, err)
 	}
@@ -190,13 +203,15 @@ func twilioVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		if category == "staff" {
 			categoryText = "staff member"
 		}
-		// Generate TwiML with digit-by-digit input
+		// Clean remark by removing HTML tags
+		cleanRemark := stripHTML(remark)
+		// Generate TwiML with digit-by-digit input, name, category, and remark
 		twiml := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-	<Say>You entered %s. The name is %s, and it is verified to be a %s.</Say>
+	<Say>You entered %s. The name is %s. The category is %s. Remark: %s.</Say>
 	<Say>Thank You For Contacting Hogwarts.</Say>
 	<Hangup/>
-</Response>`, spokenInputStr, fullName, categoryText)
+</Response>`, spokenInputStr, fullName, categoryText, cleanRemark)
 		fmt.Println("Successful verification, returning TwiML")
 		w.Write([]byte(twiml))
 	} else {
